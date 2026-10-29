@@ -1,0 +1,12 @@
+{
+  "name": "editorial-office",
+  "version": "0.1.0",
+  "private": true,
+  "description": "科普编辑部：a Claude Code workflow that researches, adversarially fact-checks, drafts and polishes popular science articles",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}
