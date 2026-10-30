@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 科普编辑部 (Editorial Office) is an open-source Claude Code **workflow** that produces fact-checked popular science articles. The product is `.claude/workflows/popular-science.js`. There is no app and no build step. The repo also holds an offline test harness and the generated articles.
 
+A second workflow, `.claude/workflows/agy-deep-research.js`, does general deep research: angles are researched by agy (Gemini) through the cc-suite agy runner, then cross-checked, synthesized and red-teamed by Claude. It writes `reports/<slug>.md` and `research_notes/agy-deep-research/<slug>/`. Its smoke tests are in `test/agy-deep-research.test.mjs`. The rest of this file is about popular-science.
+
 ## Commands
 
 ```bash

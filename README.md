@@ -47,6 +47,21 @@
 
 一次运行大约要调起 `2 × angleCount + 6` 个子代理，用量会明显高于普通对话。
 
+## 附带的另一个 workflow：agy-deep-research
+
+`.claude/workflows/agy-deep-research.js` 做通用深度调研（商业、科学、医学、历史、政策等）：Claude 规划角度 → 每个角度交给 agy（Gemini）深度调研 → Claude 核查员独立复核论断 → 综合成报告 → 红队审稿定稿。需要安装 cc-suite 插件（用它的 agy runner）。
+
+```
+用 agy-deep-research workflow 调研：具身智能数据创业
+```
+
+产出：
+
+- `reports/<slug>.md` — 最终报告
+- `research_notes/agy-deep-research/<slug>/raw/` — 每个角度的 agy 提示词、原始输出；`ledger.json` — 核查台账
+
+`reports/` 和 `research_notes/agy-deep-research/` 里已有的几份调研是在 `spikes` 仓库里跑的，原样搬过来，正文里引用的 `spikes` 路径没有改。
+
 ## 开发
 
 ```bash

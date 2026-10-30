@@ -7,6 +7,7 @@ Workflow versions are the `VERSION` constant in `.claude/workflows/popular-scien
 - Moved out of the `spikes` repository into this standalone repo.
 - Output paths are now relative to the project root instead of a hard-coded absolute path. Writing agents resolve them against their working directory.
 - Added an offline test harness (`npm test`) that runs the workflow with stubbed agents.
+- Moved `agy-deep-research.js` and its past runs (`reports/`, `research_notes/agy-deep-research/`) over from `spikes`. Its output paths are now project-relative too.
 
 ## Workflow v3 (as moved from spikes)
 
