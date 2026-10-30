@@ -1,3 +1,10 @@
 node_modules/
 .DS_Store
 .claude/settings.local.json
+
+# Generated outputs (this repo tracks the workflows, not their results)
+articles/*
+research_notes/*
+!articles/.gitkeep
+!research_notes/.gitkeep
+reports/

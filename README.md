@@ -31,7 +31,7 @@
 |---|---|---|
 | `topic` | **必填** | 选题 |
 | `runTag` | `untagged` | 本次运行的标签；同一选题不带标签的运行会互相覆盖 |
-| `slug` | 由 topic 生成 | 输出目录名 |
+| `slug` | 由 topic 生成 | 输出目录名，只用英文小写字母、数字和连字符（最长 60 字符）。英文选题直接由 topic 转换；中文等非拉丁选题由一个小模型起英文名，每次可能不同，想让多次运行落在同一目录就显式传 `slug` |
 | `audience` | 没有科学背景的好奇读者 | 目标读者 |
 | `length` | 1800–2500 词 / 3000–4500 字 | 篇幅 |
 | `lang` | 与选题同语言 | 成稿语言 |
@@ -45,7 +45,22 @@
 - `articles/<slug>/<版本>-<runTag>.md` — 成稿
 - `research_notes/popular-science/<slug>/<版本>-<runTag>/ledger.json` — 事实核查台账（每条论断的判定、更正措辞、共识程度、来源）
 
-一次运行大约要调起 `2 × angleCount + 6` 个子代理，用量会明显高于普通对话。
+文件名和目录名一律是英文。一次运行大约要调起 `2 × angleCount + 6` 个子代理（非拉丁选题且没传 `slug` 时再加一个起名用的 haiku 代理），用量会明显高于普通对话。
+
+## 附带的另一个 workflow：agy-deep-research
+
+`.claude/workflows/agy-deep-research.js` 做通用深度调研（商业、科学、医学、历史、政策等）：Claude 规划角度 → 每个角度交给 agy（Gemini）深度调研 → Claude 核查员独立复核论断 → 综合成报告 → 红队审稿定稿。需要安装 cc-suite 插件（用它的 agy runner）。
+
+```
+用 agy-deep-research workflow 调研：具身智能数据创业，slug 用 embodied-ai-data-startups
+```
+
+参数与 popular-science 一致的有 `topic`、`runTag`、`slug`、`audience`、`angleCount`、`angles`、`today`；`reportDir` / `outDir` 默认 `reports` / `research_notes/agy-deep-research/<slug>`。产出同样按 `<版本>-<runTag>` 分开保存，重跑不会覆盖旧报告：
+
+- `reports/<slug>/<版本>-<runTag>.md` — 最终报告
+- `research_notes/agy-deep-research/<slug>/<版本>-<runTag>/raw/` — 每个角度的 agy 提示词、原始输出；同目录下 `ledger.json` — 核查台账
+
+版本号机制引入之前的报告记为版本 1（`1-untagged`）。其中几份是在 `spikes` 仓库里跑的，原样搬过来，正文里引用的 `spikes` 路径没有改。
 
 ## 开发
 
@@ -53,7 +68,7 @@
 npm test   # 用桩代理离线跑完整个 workflow，不消耗 token
 ```
 
-改动 prompt 或流程时请提升 workflow 里的 `VERSION`，并在 `CHANGELOG.md` 记一笔。产出文件名里带版本号，同一选题可以用不同版本、不同 `runTag` 对比效果。
+改动 prompt 或流程时请提升对应 workflow 里的 `VERSION`，并在 `CHANGELOG.md` 记一笔。产出文件名里带版本号，同一选题可以用不同版本、不同 `runTag` 对比效果。
 
 ## License
 

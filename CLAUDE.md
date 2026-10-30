@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 科普编辑部 (Editorial Office) is an open-source Claude Code **workflow** that produces fact-checked popular science articles. The product is `.claude/workflows/popular-science.js`. There is no app and no build step. The repo also holds an offline test harness and the generated articles.
 
+A second workflow, `.claude/workflows/agy-deep-research.js`, does general deep research: angles are researched by agy (Gemini) through the cc-suite agy runner, then cross-checked, synthesized and red-teamed by Claude. It writes `reports/<slug>/<VERSION>-<runTag>.md` and `research_notes/agy-deep-research/<slug>/<VERSION>-<runTag>/`, the same slug and run-key rules as popular-science. Its smoke tests are in `test/agy-deep-research.test.mjs`. The rest of this file is about popular-science.
+
 ## Commands
 
 ```bash
@@ -31,13 +33,13 @@ To run the workflow for real, ask Claude Code in this directory to "use the popu
 - `articles/<slug>/<VERSION>-<runTag>.md`
 - `research_notes/popular-science/<slug>/<VERSION>-<runTag>/ledger.json`
 
-`toSlug` keeps Unicode letters, so Chinese topics produce Chinese directory names.
+File names are English only. `toSlug` keeps ASCII letters and digits only (accents folded, max 60 characters). The slug comes from `args.slug`, else from a Latin-script topic, else from a small haiku agent labelled `slug`. A generated slug can differ between runs, so pass `args.slug` when comparing runs.
 
 **Test harness.** `test/harness.mjs` turns the workflow file into an `AsyncFunction` and stubs `agent`, `pipeline`, `parallel`, `phase`, `log` and `budget`:
 - `pipeline` and `parallel` mirror the real runtime's null-on-failure behaviour.
 - `Date.now()`, argless `new Date()` and `Math.random()` throw, just as they do in the real runtime, where they would break resume.
 
-Tests dispatch fake agent results by `opts.label` (`plan`, `research:<key>`, `fact-check:<key>`, `draft`, `review:*`, `polish`, `verify:final`). Changing a label breaks the tests on purpose. To check what the agents are given, tests read the prompt sections inside tags such as `<usable_claims>`.
+Tests dispatch fake agent results by `opts.label` (`slug`, `plan`, `research:<key>`, `fact-check:<key>`, `draft`, `review:*`, `polish`, `verify:final`). Changing a label breaks the tests on purpose. To check what the agents are given, tests read the prompt sections inside tags such as `<usable_claims>`.
 
 ## Workflow script constraints
 

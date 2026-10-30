@@ -37,6 +37,7 @@ const review = { issues: [{ quote: 'x', problem: 'y', fix: 'z', severity: 'must-
 const fake = ({ failResearch = [] } = {}) => (prompt, { label }) => {
   const [stage, key] = label.split(':')
   if (label === 'plan') return plan
+  if (label === 'slug') return { slug: 'Why We Dream' }
   if (stage === 'research') return failResearch.includes(key) ? null : research(key)
   if (stage === 'fact-check') return verdicts(key)
   if (label === 'draft') return '# Draft <!-- c:core-1 -->'
@@ -60,8 +61,8 @@ test('requires a topic', async () => {
 
 test('paths are project-relative and keyed by version and runTag', async () => {
   const { result, calls } = await runWorkflow(WF, { topic: '为什么我们会做梦？', runTag: 'First Try' }, fake())
-  assert.equal(result.article, `articles/为什么我们会做梦/${VERSION}-first-try.md`)
-  assert.equal(result.ledger, `research_notes/popular-science/为什么我们会做梦/${VERSION}-first-try/ledger.json`)
+  assert.equal(result.article, `articles/why-we-dream/${VERSION}-first-try.md`)
+  assert.equal(result.ledger, `research_notes/popular-science/why-we-dream/${VERSION}-first-try/ledger.json`)
   const polish = calls.find(c => c.opts.label === 'polish').prompt
   assert.match(polish, /project root/)
   assert.ok(polish.includes(result.article) && polish.includes(result.ledger))
@@ -104,4 +105,38 @@ test('untagged runs warn about overwriting', async () => {
   const { logs, result } = await runWorkflow(WF, { topic: 'Dreams' }, fake())
   assert.equal(result.runTag, 'untagged')
   assert.ok(logs.some(l => /overwrite/.test(l)))
+})
+
+test('file names are English: non-ASCII topics get a generated slug', async () => {
+  const { calls, logs } = await runWorkflow(WF, { topic: '为什么我们会做梦？' }, fake())
+  const slug = calls.find(c => c.opts.label === 'slug')
+  assert.ok(slug && slug.opts.model === 'haiku' && slug.opts.effort === 'low')
+  const polish = calls.find(c => c.opts.label === 'polish').prompt
+  assert.match(polish, new RegExp(`articles/why-we-dream/${VERSION}-untagged\\.md`))
+  assert.ok(logs.some(l => /args\.slug: "why-we-dream"/.test(l)))
+  for (const { prompt } of calls) assert.doesNotMatch(prompt, /(articles|research_notes\/popular-science)\/[a-z0-9-]*[^\x00-\x7f]/)
+})
+
+test('an ASCII topic or args.slug needs no slug agent', async () => {
+  const ascii = await runWorkflow(WF, { topic: 'Why do we dream? A café story', runTag: 't' }, fake())
+  assert.equal(ascii.result.slug, 'why-do-we-dream-a-cafe-story')
+  assert.ok(!ascii.calls.some(c => c.opts.label === 'slug'))
+  const given = await runWorkflow(WF, { topic: '为什么我们会做梦？', slug: 'Dreams 101', runTag: 't' }, fake())
+  assert.equal(given.result.slug, 'dreams-101')
+  assert.ok(!given.calls.some(c => c.opts.label === 'slug'))
+})
+
+test('slugs are capped at 60 characters on a word boundary', async () => {
+  const { result } = await runWorkflow(WF, { topic: 'quantum '.repeat(10), runTag: 't' }, fake())
+  assert.equal(result.slug, 'quantum-'.repeat(6) + 'quantum')
+  const long = await runWorkflow(WF, { topic: 'x'.repeat(80), runTag: 't' }, fake())
+  assert.equal(long.result.slug, 'x'.repeat(60))
+})
+
+test('a non-English slug or runTag is rejected before any agent runs', async () => {
+  let spawned = 0
+  const respond = (...a) => { spawned++; return fake()(...a) }
+  await assert.rejects(runWorkflow(WF, { topic: 'Dreams', slug: '做梦' }, respond), /args\.slug must be English/)
+  await assert.rejects(runWorkflow(WF, { topic: 'Dreams', runTag: '第一次' }, respond), /args\.runTag must be English/)
+  assert.equal(spawned, 0)
 })
