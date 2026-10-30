@@ -1,7 +1,7 @@
 export const meta = {
   name: 'agy-deep-research',
   description: 'Multi-angle deep research via agy (Gemini), then Claude cross-check, synthesis and red-team review',
-  whenToUse: 'Deep research on any topic (business, science, medicine, law, history, policy, tech choices): args = {topic, slug?, audience?, angleCount?, angles?, outline?, profile?, model?, today?, outDir?, reportDir?}. Needs the cc-suite plugin (agy runner). Writes reports/<slug>.md and research_notes/agy-deep-research/<slug>/{raw/,ledger.json} under the project root.',
+  whenToUse: 'Deep research on any topic (business, science, medicine, law, history, policy, tech choices): args = {topic, runTag?, slug? (English; pass one for non-Latin topics so runs share a directory), audience?, angleCount?, angles?, outline?, profile?, model?, today?, outDir?, reportDir?}. Needs the cc-suite plugin (agy runner). Writes reports/<slug>/<version>-<runTag>.md and research_notes/agy-deep-research/<slug>/<version>-<runTag>/{raw/,ledger.json} under the project root.',
   phases: [
     { title: 'Plan', detail: 'Claude (opus, xhigh) designs the domain profile, research angles and report outline (skipped if angles are given)', model: 'opus' },
     { title: 'Research', detail: 'one agy (Gemini) deep-research run per angle, claims extracted by Claude' },
@@ -11,14 +11,22 @@ export const meta = {
   ],
 }
 
+const VERSION = '2'
+
 const A = args || {}
 if (!A.topic) throw new Error('agy-deep-research needs args.topic, e.g. {topic: "AI 陪伴硬件创业"}')
-const toSlug = (s) => String(s).trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '')
+// File and directory names are ASCII-only kebab-case (accents folded, everything else dropped), capped at 60 characters.
+const toSlug = (s) => {
+  const full = String(s).normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  if (full.length <= 60) return full
+  const cut = full.slice(0, 61), i = cut.lastIndexOf('-')  // drop the word that crosses the limit
+  return i > 0 ? cut.slice(0, i) : full.slice(0, 60)
+}
 const TOPIC = A.topic
-const SLUG = A.slug || toSlug(TOPIC)
-// Default paths are relative to the project root; scripts have no filesystem access, so the agents resolve them.
-const OUT = A.outDir || `research_notes/agy-deep-research/${SLUG}`
-const REPORT = `${A.reportDir || 'reports'}/${SLUG}.md`
+if (A.slug && !toSlug(A.slug)) throw new Error(`args.slug must be English (letters, digits, hyphens), got "${A.slug}"`)
+if (A.runTag && !toSlug(A.runTag)) throw new Error(`args.runTag must be English (letters, digits, hyphens), got "${A.runTag}"`)
+const RUN_TAG = A.runTag ? toSlug(A.runTag) : 'untagged'
+const RUN = `${VERSION}-${RUN_TAG}`
 const PATHS = '相对路径都相对于项目根目录（即你的当前工作目录）；使用 Write 或 Edit 前先解析成绝对路径。'
 const MODEL = A.model || 'Gemini 3.8 Flash (High)'
 const TODAY = A.today ? `今天是 ${A.today}` : '以运行环境的当前日期为准'
@@ -46,6 +54,12 @@ const BUSINESS_PROFILE = {
     { key: 'numbers', lens: '市场规模、价格与成本数字、融资事件与估值、政策文件', kinds: ['number', 'funding', 'policy'] },
     { key: 'entities', lens: '公司是否存在及其产品/客户/规模、技术路线与产品的事实描述', kinds: ['company', 'tech'] },
   ],
+}
+
+const SLUG_SCHEMA = {
+  type: 'object',
+  properties: { slug: { type: 'string', description: 'English kebab-case, 2-6 words, ASCII only' } },
+  required: ['slug'],
 }
 
 const PLAN_SCHEMA = {
@@ -179,6 +193,22 @@ const CONTRA_SCHEMA = {
 }
 
 phase('Plan')
+// Slug priority: args.slug, then an ASCII topic, then an English name from a small agent (may vary between runs; pass args.slug to keep runs together).
+const latinTopic = /^[\x00-\x7f]*$/.test(TOPIC.normalize('NFKD').replace(/\p{M}/gu, ''))
+let SLUG = toSlug(A.slug || (latinTopic ? TOPIC : ''))
+if (!SLUG) {
+  const named = await agent(`Give an English file name (slug) for a research report on: "${TOPIC}". 2-6 lowercase English words joined by hyphens, ASCII only, naming the subject rather than translating the topic word for word. Do not write any files.`,
+    { label: 'slug', phase: 'Plan', schema: SLUG_SCHEMA, model: 'haiku', effort: 'low' })
+  SLUG = toSlug(named?.slug || '')
+  if (!SLUG) throw new Error('Could not derive an English slug from the topic; pass args.slug')
+  log(`slug 由模型生成：${SLUG}；以后调研同一主题时传 args.slug: "${SLUG}"，各次运行才会落在同一目录`)
+}
+// Each run gets its own report file and notes dir, keyed by VERSION-runTag.
+// Default paths are relative to the project root; scripts have no filesystem access, so the agents resolve them.
+const OUT = `${A.outDir || `research_notes/agy-deep-research/${SLUG}`}/${RUN}`
+const REPORT = `${A.reportDir || 'reports'}/${SLUG}/${RUN}.md`
+log(`agy-deep-research v${VERSION}，运行 ${RUN} → ${REPORT}`)
+if (!A.runTag) log('未指定 runTag：同一 slug 下不带标签的运行会互相覆盖')
 let plan
 if (A.angles) {
   plan = { audience: A.audience || DEFAULT_AUDIENCE, profile: BUSINESS_PROFILE, angles: A.angles, outline: A.outline || [] }
@@ -380,4 +410,4 @@ ${draft}
 ${JSON.stringify(ledger, null, 1)}
 </ledger>`, { label: 'red-team', phase: 'Red-team' })
 
-return { report: REPORT, rawDir: `${OUT}/raw`, audience: AUDIENCE, profile: P, tally, fallbacks, final }
+return { version: VERSION, runTag: RUN_TAG, slug: SLUG, report: REPORT, ledger: `${OUT}/ledger.json`, rawDir: `${OUT}/raw`, audience: AUDIENCE, profile: P, tally, fallbacks, final }

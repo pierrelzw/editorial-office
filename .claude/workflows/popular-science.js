@@ -1,7 +1,7 @@
 export const meta = {
   name: 'popular-science',
   description: 'Research any topic from multiple angles, adversarially fact-check it, then draft and polish a popular science article',
-  whenToUse: 'Popular science article on any topic: args = {topic, runTag?, slug?, audience?, length?, lang?, angleCount?, angles?, outDir?, articleDir?, today?}. Writes articles/<slug>/<version>-<runTag>.md and research_notes/popular-science/<slug>/<version>-<runTag>/ledger.json under the project root.',
+  whenToUse: 'Popular science article on any topic: args = {topic, runTag?, slug? (English; pass one for non-Latin topics so runs share a directory), audience?, length?, lang?, angleCount?, angles?, outDir?, articleDir?, today?}. Writes articles/<slug>/<version>-<runTag>.md and research_notes/popular-science/<slug>/<version>-<runTag>/ledger.json under the project root.',
   phases: [
     { title: 'Plan', detail: 'editor splits the topic into investigation angles and reader questions' },
     { title: 'Investigate', detail: 'one researcher per angle, each followed by an adversarial fact-checker' },
@@ -12,19 +12,22 @@ export const meta = {
   ],
 }
 
-const VERSION = '3'
+const VERSION = '4'
 
 const A = args || {}
 if (!A.topic) throw new Error('popular-science needs args.topic, e.g. {topic: "Why do we dream?"}')
-const toSlug = (s) => String(s).trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '')
+// File and directory names are ASCII-only kebab-case (accents folded, everything else dropped), capped at 60 characters.
+const toSlug = (s) => {
+  const full = String(s).normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  if (full.length <= 60) return full
+  const cut = full.slice(0, 61), i = cut.lastIndexOf('-')  // drop the word that crosses the limit
+  return i > 0 ? cut.slice(0, i) : full.slice(0, 60)
+}
 const TOPIC = A.topic
-const SLUG = A.slug || toSlug(TOPIC)
+if (A.slug && !toSlug(A.slug)) throw new Error(`args.slug must be English (letters, digits, hyphens), got "${A.slug}"`)
+if (A.runTag && !toSlug(A.runTag)) throw new Error(`args.runTag must be English (letters, digits, hyphens), got "${A.runTag}"`)
 const RUN_TAG = A.runTag ? toSlug(A.runTag) : 'untagged'
 const RUN = `${VERSION}-${RUN_TAG}`
-// Each run gets its own article file and notes dir, keyed by VERSION-runTag.
-// Default paths are relative to the project root; scripts have no filesystem access, so the writing agents resolve them.
-const OUT = `${A.outDir || `research_notes/popular-science/${SLUG}`}/${RUN}`
-const ARTICLE = `${A.articleDir || 'articles'}/${SLUG}/${RUN}.md`
 const PATHS = 'Relative paths are relative to the project root (your current working directory); resolve them to absolute paths before using Write or Edit.'
 const AUDIENCE = A.audience || 'curious general readers with no science background — a smart 15-year-old or a busy adult reading on their phone'
 const LENGTH = A.length || 'about 1800–2500 words (or 3000–4500 characters if written in Chinese)'
@@ -142,6 +145,12 @@ const REVIEW_SCHEMA = {
   required: ['issues', 'overall'],
 }
 
+const SLUG_SCHEMA = {
+  type: 'object',
+  properties: { slug: { type: 'string', description: 'English kebab-case, 2-6 words, ASCII only' } },
+  required: ['slug'],
+}
+
 const FINAL_SCHEMA = {
   type: 'object',
   properties: {
@@ -156,6 +165,20 @@ const FINAL_SCHEMA = {
 }
 
 phase('Plan')
+// Slug priority: args.slug, then an ASCII topic, then an English name from a small agent (may vary between runs; pass args.slug to keep runs together).
+const latinTopic = /^[\x00-\x7f]*$/.test(TOPIC.normalize('NFKD').replace(/\p{M}/gu, ''))
+let SLUG = toSlug(A.slug || (latinTopic ? TOPIC : ''))
+if (!SLUG) {
+  const named = await agent(`Give an English file name (slug) for an article on: "${TOPIC}". 2-6 lowercase English words joined by hyphens, ASCII only, naming the subject rather than translating the question word for word. Do not write any files.`,
+    { label: 'slug', phase: 'Plan', schema: SLUG_SCHEMA, model: 'haiku', effort: 'low' })
+  SLUG = toSlug(named?.slug || '')
+  if (!SLUG) throw new Error('Could not derive an English slug from the topic; pass args.slug')
+  log(`Slug "${SLUG}" was generated; pass args.slug: "${SLUG}" to keep later runs of this topic in the same directory`)
+}
+// Each run gets its own article file and notes dir, keyed by VERSION-runTag.
+// Default paths are relative to the project root; scripts have no filesystem access, so the writing agents resolve them.
+const OUT = `${A.outDir || `research_notes/popular-science/${SLUG}`}/${RUN}`
+const ARTICLE = `${A.articleDir || 'articles'}/${SLUG}/${RUN}.md`
 log(`popular-science v${VERSION}, run ${RUN} → ${ARTICLE}`)
 if (!A.runTag) log('No runTag given: untagged runs of the same slug overwrite each other')
 let plan
@@ -382,4 +405,4 @@ ${JSON.stringify(ledger.map(({ id, claim, verdict, corrected, sources }) => ({ i
 </ledger>`, { label: 'verify:final', phase: 'Verify', schema: REVIEW_SCHEMA })
 log(`Final gate: ${finalCheck?.issues.length ?? 'n/a'} issues, ${finalCheck?.issues.filter(i => i.severity === 'must-fix').length ?? 'n/a'} must-fix`)
 
-return { version: VERSION, runTag: RUN_TAG, article: ARTICLE, ledger: `${OUT}/ledger.json`, tally, angles: plan.angles.map(a => a.key), final, finalCheck }
+return { version: VERSION, runTag: RUN_TAG, slug: SLUG, article: ARTICLE, ledger: `${OUT}/ledger.json`, tally, angles: plan.angles.map(a => a.key), final, finalCheck }
